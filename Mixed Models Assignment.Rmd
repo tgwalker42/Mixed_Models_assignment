@@ -1,0 +1,155 @@
+---
+title: "Mixed Models Assignment"
+author: "T. G. Walker"
+date: "9/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup2, include=FALSE}
+
+library(Rcpp)
+library(magrittr)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(performance)
+library(ggplot2)
+library(dplyr)
+
+```
+```{r reading in data, include=FALSE}
+bat_data<-read.csv("BatsInNoiseTW.csv")
+
+bat_data<-na.omit(bat_data)
+
+View(bat_data)
+
+Bat<- as.factor(bat_data$Bat)
+
+```
+For part 1 I used a Data set that took 3 Pallid bats and looked at how different sound treatments affected their ability to echolocate and source prey. They were each placed in a box and exposed to 1 of three sound treatments emitting from 1 of multiple speakers in the box, multiple times and then there search time was recorded in each to view how each sound affected them. These sounds were either Ambient (Control), Overlapping, and Non-Overlapping. 
+
+The overlapping and non over lapping refers to the decibels emitted and whether it overlapped with the sound of common prey insects calling and the non overlapping were sounds that were of higher frequency then said insects. 
+
+Success and search time ended when the bats landed at the correct speaker emitting noise.
+
+```{r, include=TRUE}
+
+lmeModel<-lmer(Search_time ~ Treatment*Night + (1|Bat), data=bat_data)
+anova(lmeModel)
+```
+So here we see that both Night and Sound Treatment both have a significant effect on the bats search time.
+
+```{r, include=TRUE}
+Bat_sound.plot1<- ggplot(bat_data, aes(x=Treatment, y=Search_time, group=Bat, color=Bat)) + 
+  geom_point(size=4, position = position_dodge2(width=.33, preserve = "total")) +
+  #geom_line() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title="Bat Search Time with Varying Sound Treatments", x= "Treatment", y = "Search Time")
+Bat_sound.plot1
+```
+```{r, include= TRUE}
+search_means <- bat_data %>%
+  group_by(Treatment) %>%
+  summarise(mean_search_time=mean(Search_time),
+            se_search=sd(Search_time)/sqrt(n()))
+search_means
+
+mixed_bat_searchtime <- lmer(Search_time~(Treatment*Bat)+(1|Bat), data = bat_data)
+anova(mixed_bat_searchtime)
+```
+Notice the Degrees of freedom match up with 3 treatments and three bats and that treatments definitely have a significant effect.
+
+Next Let's look at the summary
+
+```{r mixed_model, include=TRUE}
+summary(mixed_bat_searchtime)
+
+```
+```{r linearity, include=TRUE}
+performance::check_model(mixed_bat_searchtime)
+
+```
+
+Next we calculate Model adjusted means
+```{r, include =TRUE}
+mixed_bat_searchtime_emm <- emmeans(mixed_bat_searchtime, "Treatment")
+
+mixed_bat_searchtime_emm
+```
+```{r, include=TRUE}
+emmeans(mixed_bat_searchtime, "Bat")
+
+emmeans(mixed_bat_searchtime, "Treatment","Bat")
+
+emmeans(mixed_bat_searchtime, "Bat", "Treatment")
+```
+Raw means vs. Model Adjusted Means
+
+```{r, include=TRUE}
+bat_data_emm <- as.data.frame(mixed_bat_searchtime_emm)
+bat_data_emm
+search_means
+```
+Here is the plot of raw means vs adjusted means for evaluation
+```{r plot 2, include=TRUE}
+Bat_data_plot2<- ggplot(bat_data_emm, aes(x=Treatment, y=emmean)) + 
+  geom_point(size=4) +
+  geom_errorbar(aes(ymin=emmean-SE, ymax=emmean+SE), width=.2) +
+  labs(title="Bat Data Comparing Raw Vs. Model Adjusted Means", x= NULL, y = "Search Time") +
+  geom_point(data=search_means, size=4, x=search_means$Treatment, y=search_means$mean_search_time, color="blue") +
+  theme(axis.text.x = ggtext::element_markdown(color = "blue", size = 12)) +
+  scale_x_discrete(name = NULL, labels = labels)
+Bat_data_plot2
+```
+Next are the pairs camparisons
+```{r pairs, include=TRUE}
+pairs(emmeans(mixed_bat_searchtime, "Treatment"))
+```
+```{r pairs 2, include= TRUE}
+ pairs(emmeans(mixed_bat_searchtime, "Bat"))
+```
+No Reason for the next table but just for comparison
+```{r, include = TRUE}
+emmeans(mixed_bat_searchtime, specs = pairwise ~ Treatment:Bat)
+```
+For Part 2: Nested Design I fabricated some data looking at male alligator weights by different 'beaches' they were collected from that act as a 'cage'. 
+I chose this option because non dominant male alligators actually get pushed out to beach areas in coastal regions in the wild by dominant males in better habitat types mostly swamps located inland. So I decided to see if any of these beach areas that I created would actually show any relationships to alligator weights (also made up).
+
+There are thirteen individuals spread across 3 beaches with weight measurements that were taken three separate times.
+```{r data, include=FALSE}
+Alligator_weight<- read.csv("Alligator.csv")
+```
+Here is the plot of each gator
+```{r, include = TRUE}
+Alligator.plot<-ggplot(Alligator_weight, aes(Beach, Body_weight, colour = as.factor(Male), shape=as.factor(measures))) + 
+  geom_jitter(width =0.15, size=5) +
+  annotate("text", x = 2, y = 82.5, label = "13 Males") +
+  annotate("text", x = 2, y = 80, label = "3 measures per Male") +
+  annotate("text", x = 2, y = 77.5, label = "39 total measurements", size=5, color="blue")
+
+Alligator.plot
+
+```
+```{r, include = TRUE}
+alligators.1 <- lmer(Body_weight ~ Beach + (1|Beach/Male), data = Alligator_weight )
+summary(alligators.1)
+anova(alligators.1)
+```
+We are Interested in each beach and because we had unbalanced sampling
+```{r alligators 2, include=TRUE}
+alligators.2 <- lmer(Body_weight ~ (1|Beach/Male), data = Alligator_weight)
+summary(alligators.2)
+anova(alligators.2)
+```
+
+
+
+```{r Chiq test, include= TRUE}
+anova(alligators.2,alligators.1, test = "Chisq")
+```
+
